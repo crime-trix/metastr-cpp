@@ -82,6 +82,20 @@ constexpr std::uint8_t automaton_step(std::uint64_t seed, std::uint8_t state, st
 }
 
 template <class Char>
+constexpr std::uint8_t automaton_absorb(std::uint64_t seed, std::uint8_t state, std::size_t index, Char value) noexcept
+{
+    using unsigned_char = std::make_unsigned_t<Char>;
+
+    auto current = static_cast<unsigned_char>(value);
+    for (std::size_t byte = 0; byte < sizeof(Char); ++byte) {
+        const auto part = static_cast<std::uint8_t>((current >> (byte * 8)) & 0xff);
+        state = automaton_step(seed, state, index * sizeof(Char) + byte, part);
+    }
+
+    return state;
+}
+
+template <class Char>
 constexpr Char automaton_mask_for(std::uint64_t seed, std::uint8_t state, std::size_t index) noexcept
 {
     using unsigned_char = std::make_unsigned_t<Char>;
@@ -331,8 +345,7 @@ struct automaton_blob {
         auto state = initial_state;
         for (std::size_t i = 0; i < N; ++i) {
             output[i] = static_cast<Char>(data[i] ^ detail::automaton_mask_for<Char>(Seed, state, i));
-            state = detail::automaton_step(Seed, state, i, static_cast<std::uint8_t>(
-                static_cast<std::make_unsigned_t<Char>>(data[i]) & 0xff));
+            state = detail::automaton_absorb(Seed, state, i, data[i]);
         }
         return true;
     }
@@ -390,8 +403,7 @@ template <std::uint64_t Seed, class Char, std::size_t N>
 
     for (std::size_t i = 0; i < N; ++i) {
         blob.data[i] = static_cast<Char>(literal[i] ^ detail::automaton_mask_for<Char>(Seed, state, i));
-        state = detail::automaton_step(Seed, state, i, static_cast<std::uint8_t>(
-            static_cast<std::make_unsigned_t<Char>>(blob.data[i]) & 0xff));
+        state = detail::automaton_absorb(Seed, state, i, blob.data[i]);
         checksum ^= static_cast<std::uint64_t>(static_cast<std::make_unsigned_t<Char>>(literal[i])) +
             detail::stream_word(Seed ^ 0xbb67ae8584caa73bull, i);
         checksum = detail::rotl64(checksum, 11);

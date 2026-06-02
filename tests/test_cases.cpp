@@ -126,6 +126,20 @@ bool automaton_payload_differs_from_stream_payload()
         auto_decoded.view() == "same input";
 }
 
+bool automaton_wide_state_uses_high_bytes()
+{
+    constexpr auto seed = 0x13579bdf2468ace0ull;
+    constexpr auto a = metastr::make_automaton_blob<seed>(u"\u0101x");
+    constexpr auto b = metastr::make_automaton_blob<seed>(u"\u0201x");
+
+    auto decoded_a = a.decode();
+    auto decoded_b = b.decode();
+
+    return a.data[1] != b.data[1] &&
+        decoded_a.view() == u"\u0101x" &&
+        decoded_b.view() == u"\u0201x";
+}
+
 bool decode_into_rejects_small_buffer()
 {
     constexpr auto blob = metastr::make_blob<0x8877665544332211ull>("small");
@@ -171,6 +185,52 @@ bool automaton_scoped_callback_decode()
     });
 }
 
+bool deterministic_property_roundtrips()
+{
+    constexpr auto stream_empty = metastr::make_blob<0x0000000000000001ull>("");
+    constexpr auto auto_empty = metastr::make_automaton_blob<0x0000000000000001ull>("");
+    constexpr auto stream_one = metastr::make_blob<0x0123456789abcdefull>("a");
+    constexpr auto auto_one = metastr::make_automaton_blob<0x0123456789abcdefull>("a");
+    constexpr auto stream_short = metastr::make_blob<0xfedcba9876543210ull>("short");
+    constexpr auto auto_short = metastr::make_automaton_blob<0xfedcba9876543210ull>("short");
+    constexpr auto stream_text = metastr::make_blob<0x9e3779b97f4a7c15ull>("with spaces and punctuation !?");
+    constexpr auto auto_text = metastr::make_automaton_blob<0x9e3779b97f4a7c15ull>("with spaces and punctuation !?");
+    constexpr auto stream_long = metastr::make_blob<0x6a09e667f3bcc909ull>("0123456789abcdef0123456789abcdef0123456789abcdef");
+    constexpr auto auto_long = metastr::make_automaton_blob<0x6a09e667f3bcc909ull>("0123456789abcdef0123456789abcdef0123456789abcdef");
+
+    auto stream_empty_decoded = stream_empty.decode();
+    auto auto_empty_decoded = auto_empty.decode();
+    auto stream_one_decoded = stream_one.decode();
+    auto auto_one_decoded = auto_one.decode();
+    auto stream_short_decoded = stream_short.decode();
+    auto auto_short_decoded = auto_short.decode();
+    auto stream_text_decoded = stream_text.decode();
+    auto auto_text_decoded = auto_text.decode();
+    auto stream_long_decoded = stream_long.decode();
+    auto auto_long_decoded = auto_long.decode();
+
+    return stream_empty_decoded.view() == "" &&
+        auto_empty_decoded.view() == "" &&
+        stream_one_decoded.view() == "a" &&
+        auto_one_decoded.view() == "a" &&
+        stream_short_decoded.view() == "short" &&
+        auto_short_decoded.view() == "short" &&
+        stream_text_decoded.view() == "with spaces and punctuation !?" &&
+        auto_text_decoded.view() == "with spaces and punctuation !?" &&
+        stream_long_decoded.view() == "0123456789abcdef0123456789abcdef0123456789abcdef" &&
+        auto_long_decoded.view() == "0123456789abcdef0123456789abcdef0123456789abcdef" &&
+        stream_empty.matches(stream_empty_decoded) &&
+        auto_empty.matches(auto_empty_decoded) &&
+        stream_one.matches(stream_one_decoded) &&
+        auto_one.matches(auto_one_decoded) &&
+        stream_short.matches(stream_short_decoded) &&
+        auto_short.matches(auto_short_decoded) &&
+        stream_text.matches(stream_text_decoded) &&
+        auto_text.matches(auto_text_decoded) &&
+        stream_long.matches(stream_long_decoded) &&
+        auto_long.matches(auto_long_decoded);
+}
+
 } // namespace
 
 int main()
@@ -194,11 +254,13 @@ int main()
         {"decode_into_buffer", decode_into_buffer},
         {"automaton_decode_into_buffer", automaton_decode_into_buffer},
         {"automaton_payload_differs_from_stream_payload", automaton_payload_differs_from_stream_payload},
+        {"automaton_wide_state_uses_high_bytes", automaton_wide_state_uses_high_bytes},
         {"decode_into_rejects_small_buffer", decode_into_rejects_small_buffer},
         {"checksum_matches_decoded_value", checksum_matches_decoded_value},
         {"automaton_checksum_matches_decoded_value", automaton_checksum_matches_decoded_value},
         {"scoped_callback_decode", scoped_callback_decode},
         {"automaton_scoped_callback_decode", automaton_scoped_callback_decode},
+        {"deterministic_property_roundtrips", deterministic_property_roundtrips},
     };
 
     for (const auto& test : tests) {

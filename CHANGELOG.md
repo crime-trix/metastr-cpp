@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.3
+
+- Improved automaton state absorption for wide character types by feeding every encoded code-unit byte into the state transition.
+- Added regression coverage for high-byte wide-character state changes.
+- Added deterministic property-style roundtrip coverage across several seeds and string lengths.
+
 ## v0.3.2
 
 - Updated the application example so protected sample values are not duplicated as ordinary input literals.
