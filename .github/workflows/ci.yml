@@ -24,3 +24,5 @@ jobs:
       - run: .\build-consumer\Release\metastr-consumer.exe
       - shell: pwsh
         run: ./tools/run_size_bench.ps1
+      - shell: pwsh
+        run: ./tools/check_per_build_key.ps1

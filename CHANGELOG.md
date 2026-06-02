@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.6
+
+- Added CMake-generated per-build key material through `metastr/metastr_build_config.hpp`.
+- Mixed the per-build key into site seeds, stream generation and local mixing constants.
+- Installed the generated key header with the CMake package.
+- Added a deterministic fallback key with a compile-time warning for non-CMake include-only use.
+- Added CI coverage that verifies two independent configure directories generate different keys.
+
 ## v0.3.5
 
 - Replaced recognizable SplitMix/FNV-style constants with project-local constants.

@@ -9,6 +9,25 @@
 #include <type_traits>
 #include <utility>
 
+#if defined(__has_include)
+#if __has_include(<metastr/metastr_build_config.hpp>)
+#include <metastr/metastr_build_config.hpp>
+#endif
+#endif
+
+#ifndef METASTR_HAS_BUILD_KEY
+#define METASTR_HAS_BUILD_KEY 0
+#define METASTR_BUILD_KEY0 0x4b6d7a9c1e3052f1ull
+#define METASTR_BUILD_KEY1 0x9f27c4b8d65a103eull
+#define METASTR_BUILD_KEY2 0x2d8c71e5a493bf60ull
+#define METASTR_BUILD_KEY3 0xf13b6a90c72e5d48ull
+#if defined(_MSC_VER)
+#pragma message("metastr-cpp: using deterministic fallback build key; configure with CMake for per-build keys")
+#else
+#warning "metastr-cpp: using deterministic fallback build key; configure with CMake for per-build keys"
+#endif
+#endif
+
 namespace metastr {
 
 constexpr std::uint64_t hash_basis = 0x6c8e9cf570932bd5ull;
@@ -17,6 +36,10 @@ constexpr std::uint64_t stream_constant = 0x8f6d3b2a1c4e579bull;
 constexpr std::uint64_t checksum_salt = 0xc27b9e3f4d1658a1ull;
 constexpr std::uint64_t automaton_checksum_salt = 0x72f4d1a98c6e35b7ull;
 constexpr std::uint32_t format_version = 1;
+constexpr std::uint64_t build_key0 = METASTR_BUILD_KEY0;
+constexpr std::uint64_t build_key1 = METASTR_BUILD_KEY1;
+constexpr std::uint64_t build_key2 = METASTR_BUILD_KEY2;
+constexpr std::uint64_t build_key3 = METASTR_BUILD_KEY3;
 
 namespace detail {
 
@@ -29,35 +52,36 @@ constexpr std::uint64_t rotl64(std::uint64_t value, unsigned int shift) noexcept
 constexpr std::uint64_t mix64(std::uint64_t value) noexcept
 {
     value ^= rotl64(value, 23) ^ (value >> 17);
-    value *= 0xd6e8feb86659fd93ull;
+    value *= 0xd6e8feb86659fd93ull ^ (build_key1 | 1ull);
     value ^= rotl64(value, 41) ^ (value >> 29);
-    value *= 0xa5b85c5e198ed849ull;
+    value *= 0xa5b85c5e198ed849ull ^ (build_key3 | 1ull);
     value ^= value >> 32;
     return value;
 }
 
 constexpr std::uint64_t hash_bytes(const char* data, std::size_t size) noexcept
 {
-    std::uint64_t hash = hash_basis ^ static_cast<std::uint64_t>(size);
+    std::uint64_t hash = hash_basis ^ build_key0 ^ static_cast<std::uint64_t>(size);
     for (std::size_t i = 0; i < size; ++i) {
-        hash ^= static_cast<unsigned char>(data[i]) + static_cast<std::uint64_t>(i + 1) * 0x4f1bbcdc8f3a2d95ull;
+        hash ^= static_cast<unsigned char>(data[i]) +
+            static_cast<std::uint64_t>(i + 1) * (0x4f1bbcdc8f3a2d95ull ^ build_key1);
         hash = rotl64(hash, 13);
-        hash *= hash_multiplier;
+        hash *= hash_multiplier ^ (build_key2 | 1ull);
     }
-    return mix64(hash);
+    return mix64(hash ^ build_key3);
 }
 
 constexpr std::uint64_t site_seed(const char* file, std::size_t file_size, int line, int counter) noexcept
 {
     auto seed = hash_bytes(file, file_size);
     seed ^= static_cast<std::uint64_t>(line) * 0xb17d2f4c6a9e31c3ull;
-    seed ^= rotl64(static_cast<std::uint64_t>(counter) + stream_constant, 17);
+    seed ^= rotl64(static_cast<std::uint64_t>(counter) + stream_constant + build_key1, 17);
     return mix64(seed);
 }
 
 constexpr std::uint64_t stream_word(std::uint64_t seed, std::uint64_t index) noexcept
 {
-    return mix64(seed + stream_constant * (index + 1));
+    return mix64((seed ^ build_key0) + (stream_constant ^ build_key2) * (index + 1));
 }
 
 constexpr std::uint8_t automaton_start(std::uint64_t seed) noexcept
@@ -69,7 +93,7 @@ constexpr std::uint8_t automaton_step(std::uint64_t seed, std::uint8_t state, st
 {
     auto value = seed ^ (static_cast<std::uint64_t>(state) << 32);
     value ^= static_cast<std::uint64_t>(symbol) * 0xe4d2c6b91a7f538bull;
-    value ^= static_cast<std::uint64_t>(index + 1) * stream_constant;
+    value ^= static_cast<std::uint64_t>(index + 1) * (stream_constant ^ build_key3);
     return static_cast<std::uint8_t>(mix64(value) & 0xff);
 }
 
