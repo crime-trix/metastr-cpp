@@ -8,6 +8,7 @@
 #include <span>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -24,6 +25,7 @@ namespace metastr {
 constexpr std::uint64_t fnv_offset = 14695981039346656037ull;
 constexpr std::uint64_t fnv_prime = 1099511628211ull;
 constexpr std::uint64_t stream_constant = 0x9e3779b97f4a7c15ull;
+constexpr std::uint32_t format_version = 1;
 
 namespace detail {
 
@@ -69,17 +71,18 @@ constexpr std::uint64_t stream_word(std::uint64_t seed, std::uint64_t index) noe
 template <class Char>
 constexpr Char mask_for(std::uint64_t seed, std::size_t index) noexcept
 {
-    constexpr auto width = sizeof(Char) * 8;
-    const auto word = stream_word(seed, index / 8);
-    const auto byte_shift = static_cast<unsigned int>((index % 8) * 8);
-    const auto mask = static_cast<unsigned char>((word >> byte_shift) & 0xff);
+    using unsigned_char = std::make_unsigned_t<Char>;
 
-    if constexpr (sizeof(Char) == 1) {
-        return static_cast<Char>(mask);
-    } else {
-        const auto hi = static_cast<unsigned char>((stream_word(seed ^ 0xa5a5a5a5a5a5a5a5ull, index / 8) >> byte_shift) & 0xff);
-        return static_cast<Char>((static_cast<unsigned int>(hi) << (width / 2)) | mask);
+    unsigned_char value = 0;
+    for (std::size_t byte = 0; byte < sizeof(Char); ++byte) {
+        const auto stream_index = index * sizeof(Char) + byte;
+        const auto word = stream_word(seed, stream_index / 8);
+        const auto shift = static_cast<unsigned int>((stream_index % 8) * 8);
+        const auto part = static_cast<unsigned_char>((word >> shift) & 0xff);
+        value = static_cast<unsigned_char>(value | static_cast<unsigned_char>(part << (byte * 8)));
     }
+
+    return static_cast<Char>(value);
 }
 
 inline void secure_zero_bytes(void* data, std::size_t size) noexcept
@@ -99,6 +102,22 @@ inline void secure_zero_bytes(void* data, std::size_t size) noexcept
 }
 
 } // namespace detail
+
+template <class Char>
+inline constexpr bool supported_character_v =
+    std::is_same_v<Char, char> ||
+    std::is_same_v<Char, wchar_t>
+#if defined(__cpp_char8_t)
+    || std::is_same_v<Char, char8_t>
+#endif
+    || std::is_same_v<Char, char16_t> ||
+    std::is_same_v<Char, char32_t>;
+
+template <class T>
+void secure_zero(std::span<T> data) noexcept
+{
+    detail::secure_zero_bytes(data.data(), data.size_bytes());
+}
 
 template <class Char, std::size_t N>
 class decoded_string {
@@ -134,10 +153,17 @@ public:
 
     [[nodiscard]] const Char* c_str() const noexcept { return data_.data(); }
     [[nodiscard]] const Char* data() const noexcept { return data_.data(); }
+    [[nodiscard]] Char* data() noexcept { return data_.data(); }
     [[nodiscard]] constexpr std::size_t size() const noexcept { return N ? N - 1 : 0; }
+    [[nodiscard]] constexpr std::size_t storage_size() const noexcept { return N; }
+    [[nodiscard]] constexpr std::size_t byte_size() const noexcept { return N * sizeof(Char); }
     [[nodiscard]] constexpr bool empty() const noexcept { return size() == 0; }
     [[nodiscard]] std::basic_string_view<Char> view() const noexcept { return {data_.data(), size()}; }
+    [[nodiscard]] std::span<const Char, N> storage() const noexcept { return std::span<const Char, N>(data_); }
+    [[nodiscard]] std::span<Char, N> storage() noexcept { return std::span<Char, N>(data_); }
     [[nodiscard]] operator std::basic_string_view<Char>() const noexcept { return view(); }
+
+    void clear() noexcept { wipe(); }
 
 private:
     void wipe() noexcept
@@ -155,6 +181,13 @@ struct basic_blob {
     std::array<Char, N> data{};
     std::uint64_t checksum = 0;
 
+    [[nodiscard]] static constexpr std::uint64_t seed() noexcept { return Seed; }
+    [[nodiscard]] static constexpr std::size_t size() noexcept { return N ? N - 1 : 0; }
+    [[nodiscard]] static constexpr std::size_t storage_size() noexcept { return N; }
+    [[nodiscard]] static constexpr std::size_t byte_size() noexcept { return N * sizeof(Char); }
+    [[nodiscard]] static constexpr std::uint32_t version() noexcept { return format_version; }
+    [[nodiscard]] constexpr std::basic_string_view<Char> encoded_view() const noexcept { return {data.data(), data.size()}; }
+
     [[nodiscard]] constexpr bool contains_plaintext(std::basic_string_view<Char> plain) const noexcept
     {
         if (plain.size() + 1 != N) {
@@ -169,20 +202,61 @@ struct basic_blob {
         return true;
     }
 
+    [[nodiscard]] constexpr bool matches(const decoded_string<Char, N>& decoded) const noexcept
+    {
+        std::uint64_t current = Seed ^ static_cast<std::uint64_t>(N);
+        for (std::size_t i = 0; i < N; ++i) {
+            current ^= static_cast<std::uint64_t>(static_cast<std::make_unsigned_t<Char>>(decoded.storage()[i])) +
+                detail::stream_word(Seed, i);
+            current = detail::rotl64(current, 9);
+        }
+
+        return detail::mix64(current) == checksum;
+    }
+
+    bool decode_into(std::span<Char> output) const noexcept
+    {
+        if (output.size() < N) {
+            return false;
+        }
+
+        for (std::size_t i = 0; i < N; ++i) {
+            output[i] = static_cast<Char>(data[i] ^ detail::mask_for<Char>(Seed, i));
+        }
+        return true;
+    }
+
+    bool decode_into(std::span<Char, N> output) const noexcept
+    {
+        for (std::size_t i = 0; i < N; ++i) {
+            output[i] = static_cast<Char>(data[i] ^ detail::mask_for<Char>(Seed, i));
+        }
+        return true;
+    }
+
     [[nodiscard]] decoded_string<Char, N> decode() const noexcept
     {
         std::array<Char, N> out{};
-        for (std::size_t i = 0; i < N; ++i) {
-            out[i] = static_cast<Char>(data[i] ^ detail::mask_for<Char>(Seed, i));
-        }
+        decode_into(std::span<Char, N>(out));
         return decoded_string<Char, N>(out);
+    }
+
+    template <class Fn>
+    auto with_decoded(Fn&& fn) const
+    {
+        auto decoded = decode();
+        if constexpr (std::is_void_v<std::invoke_result_t<Fn, std::basic_string_view<Char>>>) {
+            std::forward<Fn>(fn)(decoded.view());
+        } else {
+            return std::forward<Fn>(fn)(decoded.view());
+        }
     }
 };
 
 template <std::uint64_t Seed, class Char, std::size_t N>
 [[nodiscard]] consteval auto make_blob(const Char (&literal)[N])
 {
-    static_assert(std::is_same_v<Char, char> || std::is_same_v<Char, wchar_t>, "metastr supports char and wchar_t literals");
+    static_assert(supported_character_v<Char>, "metastr supports char, wchar_t, char8_t, char16_t and char32_t literals");
 
     basic_blob<Char, N, Seed> blob{};
     std::uint64_t checksum = Seed ^ static_cast<std::uint64_t>(N);
@@ -219,6 +293,21 @@ template <std::uint64_t Seed, class Char, std::size_t N>
 }())
 
 #define METASTR_W(str) ([] { \
+    constexpr auto blob = ::metastr::make_blob<METASTR_SITE_SEED()>(str); \
+    return blob.decode(); \
+}())
+
+#define METASTR_U8(str) ([] { \
+    constexpr auto blob = ::metastr::make_blob<METASTR_SITE_SEED()>(str); \
+    return blob.decode(); \
+}())
+
+#define METASTR_U16(str) ([] { \
+    constexpr auto blob = ::metastr::make_blob<METASTR_SITE_SEED()>(str); \
+    return blob.decode(); \
+}())
+
+#define METASTR_U32(str) ([] { \
     constexpr auto blob = ::metastr::make_blob<METASTR_SITE_SEED()>(str); \
     return blob.decode(); \
 }())

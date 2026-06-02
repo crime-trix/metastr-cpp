@@ -1,5 +1,6 @@
 #include <metastr/metastr.hpp>
 
+#include <array>
 #include <iostream>
 #include <string_view>
 #include <vector>
@@ -22,6 +23,26 @@ bool wide_roundtrip()
     auto decoded = METASTR_W(L"hello wide metastr");
     return decoded.view() == L"hello wide metastr";
 }
+
+bool utf16_roundtrip()
+{
+    auto decoded = METASTR_U16(u"hello utf16 metastr");
+    return decoded.view() == u"hello utf16 metastr";
+}
+
+bool utf32_roundtrip()
+{
+    auto decoded = METASTR_U32(U"hello utf32 metastr");
+    return decoded.view() == U"hello utf32 metastr";
+}
+
+#if defined(__cpp_char8_t)
+bool utf8_roundtrip()
+{
+    auto decoded = METASTR_U8(u8"hello utf8 metastr");
+    return decoded.view() == u8"hello utf8 metastr";
+}
+#endif
 
 bool encoded_data_differs()
 {
@@ -63,6 +84,44 @@ bool public_difference_check()
     return metastr::encrypted_differs_from_literal<seed>("public helper");
 }
 
+bool decode_into_buffer()
+{
+    constexpr auto blob = metastr::make_blob<0x1020304050607080ull>("buffered");
+    std::array<char, blob.storage_size()> output{};
+    return blob.decode_into(std::span<char>(output.data(), output.size())) &&
+        std::string_view(output.data(), blob.size()) == "buffered";
+}
+
+bool decode_into_rejects_small_buffer()
+{
+    constexpr auto blob = metastr::make_blob<0x8877665544332211ull>("small");
+    std::array<char, 2> output{};
+    return !blob.decode_into(std::span<char>(output.data(), output.size()));
+}
+
+bool checksum_matches_decoded_value()
+{
+    constexpr auto blob = metastr::make_blob<0x0badf00d12345678ull>("checked");
+    auto decoded = blob.decode();
+    return blob.matches(decoded);
+}
+
+bool scoped_callback_decode()
+{
+    constexpr auto blob = metastr::make_blob<0xaabbccddeeff0011ull>("scoped");
+    bool seen = false;
+
+    blob.with_decoded([&](std::string_view text) {
+        seen = text == "scoped";
+    });
+
+    const auto size = blob.with_decoded([](std::string_view text) {
+        return text.size();
+    });
+
+    return seen && size == 6;
+}
+
 } // namespace
 
 int main()
@@ -70,12 +129,21 @@ int main()
     const std::vector<test_case> tests{
         {"char_roundtrip", char_roundtrip},
         {"wide_roundtrip", wide_roundtrip},
+        {"utf16_roundtrip", utf16_roundtrip},
+        {"utf32_roundtrip", utf32_roundtrip},
+#if defined(__cpp_char8_t)
+        {"utf8_roundtrip", utf8_roundtrip},
+#endif
         {"encoded_data_differs", encoded_data_differs},
         {"same_text_different_sites", same_text_different_sites},
         {"view_size_excludes_terminator", view_size_excludes_terminator},
         {"empty_string_roundtrip", empty_string_roundtrip},
         {"long_string_roundtrip", long_string_roundtrip},
         {"public_difference_check", public_difference_check},
+        {"decode_into_buffer", decode_into_buffer},
+        {"decode_into_rejects_small_buffer", decode_into_rejects_small_buffer},
+        {"checksum_matches_decoded_value", checksum_matches_decoded_value},
+        {"scoped_callback_decode", scoped_callback_decode},
     };
 
     for (const auto& test : tests) {

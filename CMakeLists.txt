@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(metastr-cpp VERSION 0.1.0 LANGUAGES CXX)
+project(metastr-cpp VERSION 0.2.0 LANGUAGES CXX)
 
 option(METASTR_BUILD_EXAMPLES "Build examples" ${PROJECT_IS_TOP_LEVEL})
 option(METASTR_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
@@ -19,6 +19,12 @@ endif()
 if(METASTR_BUILD_EXAMPLES)
     add_executable(metastr-basic examples/basic.cpp)
     target_link_libraries(metastr-basic PRIVATE metastr::metastr)
+
+    add_executable(metastr-scoped examples/scoped_decode.cpp)
+    target_link_libraries(metastr-scoped PRIVATE metastr::metastr)
+
+    add_executable(metastr-manual-blob examples/manual_blob.cpp)
+    target_link_libraries(metastr-manual-blob PRIVATE metastr::metastr)
 endif()
 
 if(METASTR_BUILD_TESTS)
@@ -27,3 +33,32 @@ if(METASTR_BUILD_TESTS)
     target_link_libraries(metastr-tests PRIVATE metastr::metastr)
     add_test(NAME metastr-tests COMMAND metastr-tests)
 endif()
+
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+install(TARGETS metastr-cpp EXPORT metastr-cpp-targets)
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+install(EXPORT metastr-cpp-targets
+    NAMESPACE metastr::
+    FILE metastr-cpp-targets.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/metastr-cpp
+)
+
+configure_package_config_file(
+    cmake/metastr-cpp-config.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/metastr-cpp-config.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/metastr-cpp
+)
+
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/metastr-cpp-config-version.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/metastr-cpp-config.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/metastr-cpp-config-version.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/metastr-cpp
+)
