@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.4
+
+- Added reproducible size benchmark executables for baseline, stream mode and automaton mode.
+- Added a PowerShell benchmark runner that reports executable size, plaintext hit count and runtime hash exit codes.
+- Added the benchmark runner to CI.
+
 ## v0.3.3
 
 - Improved automaton state absorption for wide character types by feeding every encoded code-unit byte into the state transition.

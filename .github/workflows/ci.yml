@@ -22,3 +22,5 @@ jobs:
       - run: cmake -S tests/consumer -B build-consumer -DCMAKE_PREFIX_PATH="${{ github.workspace }}\install"
       - run: cmake --build build-consumer --config Release
       - run: .\build-consumer\Release\metastr-consumer.exe
+      - shell: pwsh
+        run: ./tools/run_size_bench.ps1

@@ -132,6 +132,33 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
+## Size Benchmark
+
+The repository includes a small size benchmark with 40 identical string call-sites:
+
+```powershell
+./tools/run_size_bench.ps1
+```
+
+It builds three Release executables:
+
+- `baseline`: plain string literals;
+- `metastr_stream`: `METASTR`;
+- `metastr_auto`: `METASTR_AUTO`.
+
+The script reports executable size, delta from baseline, plaintext hit count for `api.secret.endpoint`, and the runtime hash exit code.
+Plaintext hit count in the baseline can vary when the compiler/linker pools identical literals.
+
+One MSVC `/O2 /GL /MT` run measured:
+
+| Program | Size | Delta | Plaintext hits |
+| --- | ---: | ---: | ---: |
+| baseline | 110.0 KB | - | 40 |
+| metastr_stream | 118.5 KB | +8.7 KB | 0 |
+| metastr_auto | 124.0 KB | +14.3 KB | 0 |
+
+Exact numbers vary by compiler, CRT, linker options and optimization level.
+
 ## Install
 
 ```sh

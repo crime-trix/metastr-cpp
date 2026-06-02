@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
-project(metastr-cpp VERSION 0.3.3 LANGUAGES CXX)
+project(metastr-cpp VERSION 0.3.4 LANGUAGES CXX)
 
 option(METASTR_BUILD_EXAMPLES "Build examples" ${PROJECT_IS_TOP_LEVEL})
 option(METASTR_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
+option(METASTR_BUILD_BENCHMARKS "Build size benchmark executables" OFF)
 
 add_library(metastr-cpp INTERFACE)
 add_library(metastr::metastr ALIAS metastr-cpp)
@@ -35,6 +36,22 @@ if(METASTR_BUILD_TESTS)
     add_executable(metastr-tests tests/test_cases.cpp)
     target_link_libraries(metastr-tests PRIVATE metastr::metastr)
     add_test(NAME metastr-tests COMMAND metastr-tests)
+endif()
+
+if(METASTR_BUILD_BENCHMARKS)
+    add_executable(metastr-bench-baseline benchmarks/baseline.cpp)
+    target_include_directories(metastr-bench-baseline PRIVATE benchmarks)
+    target_compile_features(metastr-bench-baseline PRIVATE cxx_std_20)
+
+    add_executable(metastr-bench-stream benchmarks/metastr_stream.cpp)
+    target_include_directories(metastr-bench-stream PRIVATE benchmarks)
+    target_compile_features(metastr-bench-stream PRIVATE cxx_std_20)
+    target_link_libraries(metastr-bench-stream PRIVATE metastr::metastr)
+
+    add_executable(metastr-bench-auto benchmarks/metastr_auto.cpp)
+    target_include_directories(metastr-bench-auto PRIVATE benchmarks)
+    target_compile_features(metastr-bench-auto PRIVATE cxx_std_20)
+    target_link_libraries(metastr-bench-auto PRIVATE metastr::metastr)
 endif()
 
 include(GNUInstallDirs)
