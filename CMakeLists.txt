@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(metastr-cpp VERSION 0.3.0 LANGUAGES CXX)
+project(metastr-cpp VERSION 0.3.2 LANGUAGES CXX)
 
 option(METASTR_BUILD_EXAMPLES "Build examples" ${PROJECT_IS_TOP_LEVEL})
 option(METASTR_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})

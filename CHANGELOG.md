@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.2
+
+- Updated the application example so protected sample values are not duplicated as ordinary input literals.
+
 ## v0.3.1
 
 - Reduced public macro implementation duplication while preserving existing names.
