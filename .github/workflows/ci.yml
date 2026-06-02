@@ -16,6 +16,8 @@ jobs:
       - run: .\build\Release\metastr-scoped.exe
       - run: .\build\Release\metastr-manual-blob.exe
       - run: .\build\Release\metastr-app-strings.exe
+      - shell: pwsh
+        run: ./tools/check_binary_strings.ps1 -Path ./build/Release/metastr-app-strings.exe -Needles "Example Application","change-me","[metastr]","admin"
       - run: cmake --install build --config Release --prefix install
       - run: cmake -S tests/consumer -B build-consumer -DCMAKE_PREFIX_PATH="${{ github.workspace }}\install"
       - run: cmake --build build-consumer --config Release

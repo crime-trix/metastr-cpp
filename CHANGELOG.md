@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.3.1
+
+- Reduced public macro implementation duplication while preserving existing names.
+- Added a CI binary scan that fails if protected example strings are present as plaintext in the Release executable.
+
 ## v0.3.0
 
 - Added automaton-backed compile-time string blobs.

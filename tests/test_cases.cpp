@@ -112,6 +112,20 @@ bool automaton_decode_into_buffer()
         std::string_view(output.data(), blob.size()) == "auto buffered";
 }
 
+bool automaton_payload_differs_from_stream_payload()
+{
+    constexpr auto seed = 0x4242424242424242ull;
+    constexpr auto stream_blob = metastr::make_blob<seed>("same input");
+    constexpr auto auto_blob = metastr::make_automaton_blob<seed>("same input");
+
+    auto stream_decoded = stream_blob.decode();
+    auto auto_decoded = auto_blob.decode();
+
+    return stream_blob.data != auto_blob.data &&
+        stream_decoded.view() == "same input" &&
+        auto_decoded.view() == "same input";
+}
+
 bool decode_into_rejects_small_buffer()
 {
     constexpr auto blob = metastr::make_blob<0x8877665544332211ull>("small");
@@ -179,6 +193,7 @@ int main()
         {"public_difference_check", public_difference_check},
         {"decode_into_buffer", decode_into_buffer},
         {"automaton_decode_into_buffer", automaton_decode_into_buffer},
+        {"automaton_payload_differs_from_stream_payload", automaton_payload_differs_from_stream_payload},
         {"decode_into_rejects_small_buffer", decode_into_rejects_small_buffer},
         {"checksum_matches_decoded_value", checksum_matches_decoded_value},
         {"automaton_checksum_matches_decoded_value", automaton_checksum_matches_decoded_value},

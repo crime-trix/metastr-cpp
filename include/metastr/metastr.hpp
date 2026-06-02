@@ -417,52 +417,24 @@ template <std::uint64_t Seed, class Char, std::size_t N>
 
 #define METASTR_SITE_SEED() (::metastr::detail::site_seed(__FILE__, sizeof(__FILE__) - 1, __LINE__, __COUNTER__))
 
-#define METASTR(str) ([] { \
+#define METASTR_DETAIL_DECODE(str) ([] { \
     constexpr auto blob = ::metastr::make_blob<METASTR_SITE_SEED()>(str); \
     return blob.decode(); \
 }())
 
-#define METASTR_W(str) ([] { \
-    constexpr auto blob = ::metastr::make_blob<METASTR_SITE_SEED()>(str); \
-    return blob.decode(); \
-}())
-
-#define METASTR_U8(str) ([] { \
-    constexpr auto blob = ::metastr::make_blob<METASTR_SITE_SEED()>(str); \
-    return blob.decode(); \
-}())
-
-#define METASTR_U16(str) ([] { \
-    constexpr auto blob = ::metastr::make_blob<METASTR_SITE_SEED()>(str); \
-    return blob.decode(); \
-}())
-
-#define METASTR_U32(str) ([] { \
-    constexpr auto blob = ::metastr::make_blob<METASTR_SITE_SEED()>(str); \
-    return blob.decode(); \
-}())
-
-#define METASTR_AUTO(str) ([] { \
+#define METASTR_DETAIL_DECODE_AUTO(str) ([] { \
     constexpr auto blob = ::metastr::make_automaton_blob<METASTR_SITE_SEED()>(str); \
     return blob.decode(); \
 }())
 
-#define METASTR_AUTO_W(str) ([] { \
-    constexpr auto blob = ::metastr::make_automaton_blob<METASTR_SITE_SEED()>(str); \
-    return blob.decode(); \
-}())
+#define METASTR(str) METASTR_DETAIL_DECODE(str)
+#define METASTR_W(str) METASTR_DETAIL_DECODE(str)
+#define METASTR_U8(str) METASTR_DETAIL_DECODE(str)
+#define METASTR_U16(str) METASTR_DETAIL_DECODE(str)
+#define METASTR_U32(str) METASTR_DETAIL_DECODE(str)
 
-#define METASTR_AUTO_U8(str) ([] { \
-    constexpr auto blob = ::metastr::make_automaton_blob<METASTR_SITE_SEED()>(str); \
-    return blob.decode(); \
-}())
-
-#define METASTR_AUTO_U16(str) ([] { \
-    constexpr auto blob = ::metastr::make_automaton_blob<METASTR_SITE_SEED()>(str); \
-    return blob.decode(); \
-}())
-
-#define METASTR_AUTO_U32(str) ([] { \
-    constexpr auto blob = ::metastr::make_automaton_blob<METASTR_SITE_SEED()>(str); \
-    return blob.decode(); \
-}())
+#define METASTR_AUTO(str) METASTR_DETAIL_DECODE_AUTO(str)
+#define METASTR_AUTO_W(str) METASTR_DETAIL_DECODE_AUTO(str)
+#define METASTR_AUTO_U8(str) METASTR_DETAIL_DECODE_AUTO(str)
+#define METASTR_AUTO_U16(str) METASTR_DETAIL_DECODE_AUTO(str)
+#define METASTR_AUTO_U32(str) METASTR_DETAIL_DECODE_AUTO(str)
