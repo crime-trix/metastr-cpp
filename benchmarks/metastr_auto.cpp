@@ -4,7 +4,7 @@
 
 int main()
 {
-    auto hash = 14695981039346656037ull;
+    auto hash = 0x84d6f2a19c3b57e0ull;
 
 #define BENCH_METASTR_AUTO() do { const auto text = METASTR_AUTO("api.secret.endpoint"); hash = bench::fnv1a(hash, text.view()); } while (false)
     BENCH_METASTR_AUTO(); BENCH_METASTR_AUTO(); BENCH_METASTR_AUTO(); BENCH_METASTR_AUTO(); BENCH_METASTR_AUTO();

@@ -93,7 +93,9 @@ bool public_difference_check()
 {
     constexpr auto seed = 0x77ddaa5500114499ull;
     static_assert(metastr::encrypted_differs_from_literal<seed>("public helper"));
-    return metastr::encrypted_differs_from_literal<seed>("public helper");
+    static_assert(metastr::automaton_encrypted_differs_from_literal<seed>("public helper"));
+    return metastr::encrypted_differs_from_literal<seed>("public helper") &&
+        metastr::automaton_encrypted_differs_from_literal<seed>("public helper");
 }
 
 bool decode_into_buffer()
@@ -138,6 +140,30 @@ bool automaton_wide_state_uses_high_bytes()
     return a.data[1] != b.data[1] &&
         decoded_a.view() == u"\u0101x" &&
         decoded_b.view() == u"\u0201x";
+}
+
+bool masks_do_not_emit_zero_bytes()
+{
+    constexpr auto seed = 0x74c2b8e19d3f560aull;
+
+    for (std::size_t i = 0; i < 512; ++i) {
+        const auto stream_mask = static_cast<unsigned char>(metastr::detail::mask_for<char>(seed, i));
+        const auto auto_mask = static_cast<unsigned char>(metastr::detail::automaton_mask_for<char>(seed, 0x5a, i));
+        if (stream_mask == 0 || auto_mask == 0) {
+            return false;
+        }
+    }
+
+    for (std::size_t i = 0; i < 128; ++i) {
+        const auto stream_mask = static_cast<std::uint16_t>(metastr::detail::mask_for<char16_t>(seed, i));
+        const auto auto_mask = static_cast<std::uint16_t>(metastr::detail::automaton_mask_for<char16_t>(seed, 0x9c, i));
+        if ((stream_mask & 0x00ffU) == 0 || (stream_mask & 0xff00U) == 0 ||
+            (auto_mask & 0x00ffU) == 0 || (auto_mask & 0xff00U) == 0) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool decode_into_rejects_small_buffer()
@@ -193,10 +219,10 @@ bool deterministic_property_roundtrips()
     constexpr auto auto_one = metastr::make_automaton_blob<0x0123456789abcdefull>("a");
     constexpr auto stream_short = metastr::make_blob<0xfedcba9876543210ull>("short");
     constexpr auto auto_short = metastr::make_automaton_blob<0xfedcba9876543210ull>("short");
-    constexpr auto stream_text = metastr::make_blob<0x9e3779b97f4a7c15ull>("with spaces and punctuation !?");
-    constexpr auto auto_text = metastr::make_automaton_blob<0x9e3779b97f4a7c15ull>("with spaces and punctuation !?");
-    constexpr auto stream_long = metastr::make_blob<0x6a09e667f3bcc909ull>("0123456789abcdef0123456789abcdef0123456789abcdef");
-    constexpr auto auto_long = metastr::make_automaton_blob<0x6a09e667f3bcc909ull>("0123456789abcdef0123456789abcdef0123456789abcdef");
+    constexpr auto stream_text = metastr::make_blob<0x52d6a3f8b91c047eull>("with spaces and punctuation !?");
+    constexpr auto auto_text = metastr::make_automaton_blob<0x52d6a3f8b91c047eull>("with spaces and punctuation !?");
+    constexpr auto stream_long = metastr::make_blob<0xc8f14b6d2e903a75ull>("0123456789abcdef0123456789abcdef0123456789abcdef");
+    constexpr auto auto_long = metastr::make_automaton_blob<0xc8f14b6d2e903a75ull>("0123456789abcdef0123456789abcdef0123456789abcdef");
 
     auto stream_empty_decoded = stream_empty.decode();
     auto auto_empty_decoded = auto_empty.decode();
@@ -255,6 +281,7 @@ int main()
         {"automaton_decode_into_buffer", automaton_decode_into_buffer},
         {"automaton_payload_differs_from_stream_payload", automaton_payload_differs_from_stream_payload},
         {"automaton_wide_state_uses_high_bytes", automaton_wide_state_uses_high_bytes},
+        {"masks_do_not_emit_zero_bytes", masks_do_not_emit_zero_bytes},
         {"decode_into_rejects_small_buffer", decode_into_rejects_small_buffer},
         {"checksum_matches_decoded_value", checksum_matches_decoded_value},
         {"automaton_checksum_matches_decoded_value", automaton_checksum_matches_decoded_value},

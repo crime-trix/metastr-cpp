@@ -16,8 +16,10 @@ The library is meant for reducing obvious string exposure in compiled binaries. 
 - move-only decoded buffers that wipe storage on destruction;
 - scoped callback decode with `with_decoded`;
 - manual decode into caller-provided buffers;
+- non-zero mask bytes to avoid unchanged plaintext bytes caused by zero keystream bytes;
 - encoded blob metadata: seed, size, byte size, checksum and format version;
-- CMake target, install rules, examples and CI-tested test coverage.
+- CMake target, install rules, examples and CI-tested test coverage;
+- no platform headers pulled into user translation units.
 
 ## Quick Start
 

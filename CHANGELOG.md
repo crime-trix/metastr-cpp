@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.5
+
+- Replaced recognizable SplitMix/FNV-style constants with project-local constants.
+- Ensured generated mask bytes are non-zero, avoiding unchanged plaintext bytes caused by zero keystream bytes.
+- Added compile-time macro guards that verify encoded payloads differ from literals.
+- Removed `windows.h` from the public header and switched wiping to a small volatile byte loop.
+- Added regression coverage for non-zero stream and automaton masks.
+
 ## v0.3.4
 
 - Added reproducible size benchmark executables for baseline, stream mode and automaton mode.

@@ -2,7 +2,7 @@
 
 int main()
 {
-    auto hash = 14695981039346656037ull;
+    auto hash = 0x84d6f2a19c3b57e0ull;
 
 #define BENCH_PLAIN() hash = bench::fnv1a(hash, "api.secret.endpoint")
     BENCH_PLAIN(); BENCH_PLAIN(); BENCH_PLAIN(); BENCH_PLAIN(); BENCH_PLAIN();

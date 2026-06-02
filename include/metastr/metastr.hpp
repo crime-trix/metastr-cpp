@@ -4,27 +4,18 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <span>
 #include <string_view>
 #include <type_traits>
 #include <utility>
 
-#if defined(_WIN32)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#endif
-
 namespace metastr {
 
-constexpr std::uint64_t fnv_offset = 14695981039346656037ull;
-constexpr std::uint64_t fnv_prime = 1099511628211ull;
-constexpr std::uint64_t stream_constant = 0x9e3779b97f4a7c15ull;
+constexpr std::uint64_t hash_basis = 0x6c8e9cf570932bd5ull;
+constexpr std::uint64_t hash_multiplier = 0xda3e39cb94b95bdbull;
+constexpr std::uint64_t stream_constant = 0x8f6d3b2a1c4e579bull;
+constexpr std::uint64_t checksum_salt = 0xc27b9e3f4d1658a1ull;
+constexpr std::uint64_t automaton_checksum_salt = 0x72f4d1a98c6e35b7ull;
 constexpr std::uint32_t format_version = 1;
 
 namespace detail {
@@ -37,28 +28,29 @@ constexpr std::uint64_t rotl64(std::uint64_t value, unsigned int shift) noexcept
 
 constexpr std::uint64_t mix64(std::uint64_t value) noexcept
 {
-    value ^= value >> 30;
-    value *= 0xbf58476d1ce4e5b9ull;
-    value ^= value >> 27;
-    value *= 0x94d049bb133111ebull;
-    value ^= value >> 31;
+    value ^= rotl64(value, 23) ^ (value >> 17);
+    value *= 0xd6e8feb86659fd93ull;
+    value ^= rotl64(value, 41) ^ (value >> 29);
+    value *= 0xa5b85c5e198ed849ull;
+    value ^= value >> 32;
     return value;
 }
 
 constexpr std::uint64_t hash_bytes(const char* data, std::size_t size) noexcept
 {
-    std::uint64_t hash = fnv_offset;
+    std::uint64_t hash = hash_basis ^ static_cast<std::uint64_t>(size);
     for (std::size_t i = 0; i < size; ++i) {
-        hash ^= static_cast<unsigned char>(data[i]);
-        hash *= fnv_prime;
+        hash ^= static_cast<unsigned char>(data[i]) + static_cast<std::uint64_t>(i + 1) * 0x4f1bbcdc8f3a2d95ull;
+        hash = rotl64(hash, 13);
+        hash *= hash_multiplier;
     }
-    return hash;
+    return mix64(hash);
 }
 
 constexpr std::uint64_t site_seed(const char* file, std::size_t file_size, int line, int counter) noexcept
 {
     auto seed = hash_bytes(file, file_size);
-    seed ^= static_cast<std::uint64_t>(line) * 0x100000001b3ull;
+    seed ^= static_cast<std::uint64_t>(line) * 0xb17d2f4c6a9e31c3ull;
     seed ^= rotl64(static_cast<std::uint64_t>(counter) + stream_constant, 17);
     return mix64(seed);
 }
@@ -70,15 +62,27 @@ constexpr std::uint64_t stream_word(std::uint64_t seed, std::uint64_t index) noe
 
 constexpr std::uint8_t automaton_start(std::uint64_t seed) noexcept
 {
-    return static_cast<std::uint8_t>(mix64(seed ^ 0xd1b54a32d192ed03ull) & 0xff);
+    return static_cast<std::uint8_t>(mix64(seed ^ 0x91e10da5c79b4f27ull) & 0xff);
 }
 
 constexpr std::uint8_t automaton_step(std::uint64_t seed, std::uint8_t state, std::size_t index, std::uint8_t symbol) noexcept
 {
     auto value = seed ^ (static_cast<std::uint64_t>(state) << 32);
-    value ^= static_cast<std::uint64_t>(symbol) * 0x100000001b3ull;
+    value ^= static_cast<std::uint64_t>(symbol) * 0xe4d2c6b91a7f538bull;
     value ^= static_cast<std::uint64_t>(index + 1) * stream_constant;
     return static_cast<std::uint8_t>(mix64(value) & 0xff);
+}
+
+constexpr std::uint8_t nonzero_byte(std::uint64_t word, std::size_t index) noexcept
+{
+    auto value = static_cast<std::uint8_t>((word >> ((index % 8) * 8)) & 0xff);
+    if (value == 0) {
+        value = static_cast<std::uint8_t>(0x5dU + static_cast<unsigned int>((index * 29U) & 0xffU));
+        if (value == 0) {
+            value = 0xa7;
+        }
+    }
+    return value;
 }
 
 template <class Char>
@@ -102,8 +106,9 @@ constexpr Char automaton_mask_for(std::uint64_t seed, std::uint8_t state, std::s
 
     unsigned_char value = 0;
     for (std::size_t byte = 0; byte < sizeof(Char); ++byte) {
-        const auto word = stream_word(seed ^ (static_cast<std::uint64_t>(state) << 40), index * sizeof(Char) + byte);
-        const auto part = static_cast<unsigned_char>((word >> ((byte % 8) * 8)) & 0xff);
+        const auto stream_index = index * sizeof(Char) + byte;
+        const auto word = stream_word(seed ^ (static_cast<std::uint64_t>(state) << 40), stream_index);
+        const auto part = static_cast<unsigned_char>(nonzero_byte(word, stream_index));
         value = static_cast<unsigned_char>(value | static_cast<unsigned_char>(part << (byte * 8)));
     }
 
@@ -119,8 +124,7 @@ constexpr Char mask_for(std::uint64_t seed, std::size_t index) noexcept
     for (std::size_t byte = 0; byte < sizeof(Char); ++byte) {
         const auto stream_index = index * sizeof(Char) + byte;
         const auto word = stream_word(seed, stream_index / 8);
-        const auto shift = static_cast<unsigned int>((stream_index % 8) * 8);
-        const auto part = static_cast<unsigned_char>((word >> shift) & 0xff);
+        const auto part = static_cast<unsigned_char>(nonzero_byte(word, stream_index));
         value = static_cast<unsigned_char>(value | static_cast<unsigned_char>(part << (byte * 8)));
     }
 
@@ -133,14 +137,10 @@ inline void secure_zero_bytes(void* data, std::size_t size) noexcept
         return;
     }
 
-#if defined(_WIN32)
-    ::SecureZeroMemory(data, size);
-#else
     volatile unsigned char* p = static_cast<volatile unsigned char*>(data);
     while (size--) {
         *p++ = 0;
     }
-#endif
 }
 
 } // namespace detail
@@ -326,10 +326,10 @@ struct automaton_blob {
 
     [[nodiscard]] constexpr bool matches(const decoded_string<Char, N>& decoded) const noexcept
     {
-        std::uint64_t current = Seed ^ static_cast<std::uint64_t>(N) ^ 0x6a09e667f3bcc909ull;
+        std::uint64_t current = Seed ^ static_cast<std::uint64_t>(N) ^ checksum_salt;
         for (std::size_t i = 0; i < N; ++i) {
             current ^= static_cast<std::uint64_t>(static_cast<std::make_unsigned_t<Char>>(decoded.storage()[i])) +
-                detail::stream_word(Seed ^ 0xbb67ae8584caa73bull, i);
+                detail::stream_word(Seed ^ automaton_checksum_salt, i);
             current = detail::rotl64(current, 11);
         }
 
@@ -399,13 +399,13 @@ template <std::uint64_t Seed, class Char, std::size_t N>
 
     automaton_blob<Char, N, Seed> blob{};
     auto state = blob.initial_state;
-    std::uint64_t checksum = Seed ^ static_cast<std::uint64_t>(N) ^ 0x6a09e667f3bcc909ull;
+    std::uint64_t checksum = Seed ^ static_cast<std::uint64_t>(N) ^ checksum_salt;
 
     for (std::size_t i = 0; i < N; ++i) {
         blob.data[i] = static_cast<Char>(literal[i] ^ detail::automaton_mask_for<Char>(Seed, state, i));
         state = detail::automaton_absorb(Seed, state, i, blob.data[i]);
         checksum ^= static_cast<std::uint64_t>(static_cast<std::make_unsigned_t<Char>>(literal[i])) +
-            detail::stream_word(Seed ^ 0xbb67ae8584caa73bull, i);
+            detail::stream_word(Seed ^ automaton_checksum_salt, i);
         checksum = detail::rotl64(checksum, 11);
     }
 
@@ -425,17 +425,33 @@ template <std::uint64_t Seed, class Char, std::size_t N>
     return true;
 }
 
+template <std::uint64_t Seed, class Char, std::size_t N>
+[[nodiscard]] consteval bool automaton_encrypted_differs_from_literal(const Char (&literal)[N])
+{
+    const auto blob = make_automaton_blob<Seed>(literal);
+    for (std::size_t i = 0; i < N; ++i) {
+        if (blob.data[i] == literal[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace metastr
 
 #define METASTR_SITE_SEED() (::metastr::detail::site_seed(__FILE__, sizeof(__FILE__) - 1, __LINE__, __COUNTER__))
 
 #define METASTR_DETAIL_DECODE(str) ([] { \
-    constexpr auto blob = ::metastr::make_blob<METASTR_SITE_SEED()>(str); \
+    constexpr auto seed = METASTR_SITE_SEED(); \
+    static_assert(::metastr::encrypted_differs_from_literal<seed>(str)); \
+    constexpr auto blob = ::metastr::make_blob<seed>(str); \
     return blob.decode(); \
 }())
 
 #define METASTR_DETAIL_DECODE_AUTO(str) ([] { \
-    constexpr auto blob = ::metastr::make_automaton_blob<METASTR_SITE_SEED()>(str); \
+    constexpr auto seed = METASTR_SITE_SEED(); \
+    static_assert(::metastr::automaton_encrypted_differs_from_literal<seed>(str)); \
+    constexpr auto blob = ::metastr::make_automaton_blob<seed>(str); \
     return blob.decode(); \
 }())
 
