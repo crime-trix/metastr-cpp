@@ -24,6 +24,18 @@ bool wide_roundtrip()
     return decoded.view() == L"hello wide metastr";
 }
 
+bool automaton_char_roundtrip()
+{
+    auto decoded = METASTR_AUTO("hello automaton metastr");
+    return decoded.view() == "hello automaton metastr";
+}
+
+bool automaton_wide_roundtrip()
+{
+    auto decoded = METASTR_AUTO_W(L"wide automaton metastr");
+    return decoded.view() == L"wide automaton metastr";
+}
+
 bool utf16_roundtrip()
 {
     auto decoded = METASTR_U16(u"hello utf16 metastr");
@@ -92,6 +104,14 @@ bool decode_into_buffer()
         std::string_view(output.data(), blob.size()) == "buffered";
 }
 
+bool automaton_decode_into_buffer()
+{
+    constexpr auto blob = metastr::make_automaton_blob<0x33445566778899aaull>("auto buffered");
+    std::array<char, blob.storage_size()> output{};
+    return blob.decode_into(std::span<char>(output.data(), output.size())) &&
+        std::string_view(output.data(), blob.size()) == "auto buffered";
+}
+
 bool decode_into_rejects_small_buffer()
 {
     constexpr auto blob = metastr::make_blob<0x8877665544332211ull>("small");
@@ -102,6 +122,13 @@ bool decode_into_rejects_small_buffer()
 bool checksum_matches_decoded_value()
 {
     constexpr auto blob = metastr::make_blob<0x0badf00d12345678ull>("checked");
+    auto decoded = blob.decode();
+    return blob.matches(decoded);
+}
+
+bool automaton_checksum_matches_decoded_value()
+{
+    constexpr auto blob = metastr::make_automaton_blob<0x1122334455667788ull>("auto checked");
     auto decoded = blob.decode();
     return blob.matches(decoded);
 }
@@ -122,6 +149,14 @@ bool scoped_callback_decode()
     return seen && size == 6;
 }
 
+bool automaton_scoped_callback_decode()
+{
+    constexpr auto blob = metastr::make_automaton_blob<0x9988776655443322ull>("auto scoped");
+    return blob.with_decoded([](std::string_view text) {
+        return text == "auto scoped";
+    });
+}
+
 } // namespace
 
 int main()
@@ -129,6 +164,8 @@ int main()
     const std::vector<test_case> tests{
         {"char_roundtrip", char_roundtrip},
         {"wide_roundtrip", wide_roundtrip},
+        {"automaton_char_roundtrip", automaton_char_roundtrip},
+        {"automaton_wide_roundtrip", automaton_wide_roundtrip},
         {"utf16_roundtrip", utf16_roundtrip},
         {"utf32_roundtrip", utf32_roundtrip},
 #if defined(__cpp_char8_t)
@@ -141,9 +178,12 @@ int main()
         {"long_string_roundtrip", long_string_roundtrip},
         {"public_difference_check", public_difference_check},
         {"decode_into_buffer", decode_into_buffer},
+        {"automaton_decode_into_buffer", automaton_decode_into_buffer},
         {"decode_into_rejects_small_buffer", decode_into_rejects_small_buffer},
         {"checksum_matches_decoded_value", checksum_matches_decoded_value},
+        {"automaton_checksum_matches_decoded_value", automaton_checksum_matches_decoded_value},
         {"scoped_callback_decode", scoped_callback_decode},
+        {"automaton_scoped_callback_decode", automaton_scoped_callback_decode},
     };
 
     for (const auto& test : tests) {

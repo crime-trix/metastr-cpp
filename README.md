@@ -9,6 +9,7 @@ The library is meant for reducing obvious string exposure in compiled binaries. 
 ## Features
 
 - `consteval` literal encoding;
+- stream and automaton-backed encoding modes;
 - per-call-site seed material from file, line and counter;
 - no fixed maximum string length;
 - support for `char`, `wchar_t`, `char8_t`, `char16_t` and `char32_t`;
@@ -40,6 +41,33 @@ auto utf8 = METASTR_U8(u8"utf8 string");
 auto utf16 = METASTR_U16(u"utf16 string");
 auto utf32 = METASTR_U32(U"utf32 string");
 ```
+
+For a stateful finite-automaton transform, use the `AUTO` macros:
+
+```cpp
+auto text = METASTR_AUTO("encoded through a state machine");
+auto wide = METASTR_AUTO_W(L"wide state machine string");
+```
+
+## Application Strings
+
+Typical application use is intentionally small:
+
+```cpp
+#include <metastr/metastr.hpp>
+
+#include <string_view>
+
+bool login(std::string_view user, std::string_view password)
+{
+    const auto expected_user = METASTR("admin");
+    const auto expected_password = METASTR_AUTO("change-me");
+
+    return user == expected_user.view() && password == expected_password.view();
+}
+```
+
+Use `METASTR` for the default compact transform. Use `METASTR_AUTO` when you want a stateful transform with per-character automaton state. Both are compile-time encoders and both decode only when the expression is evaluated.
 
 ## Scoped Decode
 

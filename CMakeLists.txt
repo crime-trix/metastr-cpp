@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(metastr-cpp VERSION 0.2.0 LANGUAGES CXX)
+project(metastr-cpp VERSION 0.3.0 LANGUAGES CXX)
 
 option(METASTR_BUILD_EXAMPLES "Build examples" ${PROJECT_IS_TOP_LEVEL})
 option(METASTR_BUILD_TESTS "Build tests" ${PROJECT_IS_TOP_LEVEL})
@@ -25,6 +25,9 @@ if(METASTR_BUILD_EXAMPLES)
 
     add_executable(metastr-manual-blob examples/manual_blob.cpp)
     target_link_libraries(metastr-manual-blob PRIVATE metastr::metastr)
+
+    add_executable(metastr-app-strings examples/app_strings.cpp)
+    target_link_libraries(metastr-app-strings PRIVATE metastr::metastr)
 endif()
 
 if(METASTR_BUILD_TESTS)

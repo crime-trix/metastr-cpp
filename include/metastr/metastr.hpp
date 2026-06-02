@@ -68,6 +68,34 @@ constexpr std::uint64_t stream_word(std::uint64_t seed, std::uint64_t index) noe
     return mix64(seed + stream_constant * (index + 1));
 }
 
+constexpr std::uint8_t automaton_start(std::uint64_t seed) noexcept
+{
+    return static_cast<std::uint8_t>(mix64(seed ^ 0xd1b54a32d192ed03ull) & 0xff);
+}
+
+constexpr std::uint8_t automaton_step(std::uint64_t seed, std::uint8_t state, std::size_t index, std::uint8_t symbol) noexcept
+{
+    auto value = seed ^ (static_cast<std::uint64_t>(state) << 32);
+    value ^= static_cast<std::uint64_t>(symbol) * 0x100000001b3ull;
+    value ^= static_cast<std::uint64_t>(index + 1) * stream_constant;
+    return static_cast<std::uint8_t>(mix64(value) & 0xff);
+}
+
+template <class Char>
+constexpr Char automaton_mask_for(std::uint64_t seed, std::uint8_t state, std::size_t index) noexcept
+{
+    using unsigned_char = std::make_unsigned_t<Char>;
+
+    unsigned_char value = 0;
+    for (std::size_t byte = 0; byte < sizeof(Char); ++byte) {
+        const auto word = stream_word(seed ^ (static_cast<std::uint64_t>(state) << 40), index * sizeof(Char) + byte);
+        const auto part = static_cast<unsigned_char>((word >> ((byte % 8) * 8)) & 0xff);
+        value = static_cast<unsigned_char>(value | static_cast<unsigned_char>(part << (byte * 8)));
+    }
+
+    return static_cast<Char>(value);
+}
+
 template <class Char>
 constexpr Char mask_for(std::uint64_t seed, std::size_t index) noexcept
 {
@@ -253,6 +281,86 @@ struct basic_blob {
     }
 };
 
+template <class Char, std::size_t N, std::uint64_t Seed>
+struct automaton_blob {
+    using value_type = Char;
+
+    std::array<Char, N> data{};
+    std::uint64_t checksum = 0;
+    std::uint8_t initial_state = detail::automaton_start(Seed);
+
+    [[nodiscard]] static constexpr std::uint64_t seed() noexcept { return Seed; }
+    [[nodiscard]] static constexpr std::size_t size() noexcept { return N ? N - 1 : 0; }
+    [[nodiscard]] static constexpr std::size_t storage_size() noexcept { return N; }
+    [[nodiscard]] static constexpr std::size_t byte_size() noexcept { return N * sizeof(Char); }
+    [[nodiscard]] static constexpr std::uint32_t version() noexcept { return format_version; }
+    [[nodiscard]] constexpr std::basic_string_view<Char> encoded_view() const noexcept { return {data.data(), data.size()}; }
+
+    [[nodiscard]] constexpr bool contains_plaintext(std::basic_string_view<Char> plain) const noexcept
+    {
+        if (plain.size() + 1 != N) {
+            return false;
+        }
+
+        for (std::size_t i = 0; i < plain.size(); ++i) {
+            if (data[i] != plain[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    [[nodiscard]] constexpr bool matches(const decoded_string<Char, N>& decoded) const noexcept
+    {
+        std::uint64_t current = Seed ^ static_cast<std::uint64_t>(N) ^ 0x6a09e667f3bcc909ull;
+        for (std::size_t i = 0; i < N; ++i) {
+            current ^= static_cast<std::uint64_t>(static_cast<std::make_unsigned_t<Char>>(decoded.storage()[i])) +
+                detail::stream_word(Seed ^ 0xbb67ae8584caa73bull, i);
+            current = detail::rotl64(current, 11);
+        }
+
+        return detail::mix64(current) == checksum;
+    }
+
+    bool decode_into(std::span<Char> output) const noexcept
+    {
+        if (output.size() < N) {
+            return false;
+        }
+
+        auto state = initial_state;
+        for (std::size_t i = 0; i < N; ++i) {
+            output[i] = static_cast<Char>(data[i] ^ detail::automaton_mask_for<Char>(Seed, state, i));
+            state = detail::automaton_step(Seed, state, i, static_cast<std::uint8_t>(
+                static_cast<std::make_unsigned_t<Char>>(data[i]) & 0xff));
+        }
+        return true;
+    }
+
+    bool decode_into(std::span<Char, N> output) const noexcept
+    {
+        return decode_into(std::span<Char>(output.data(), output.size()));
+    }
+
+    [[nodiscard]] decoded_string<Char, N> decode() const noexcept
+    {
+        std::array<Char, N> out{};
+        decode_into(std::span<Char, N>(out));
+        return decoded_string<Char, N>(out);
+    }
+
+    template <class Fn>
+    auto with_decoded(Fn&& fn) const
+    {
+        auto decoded = decode();
+        if constexpr (std::is_void_v<std::invoke_result_t<Fn, std::basic_string_view<Char>>>) {
+            std::forward<Fn>(fn)(decoded.view());
+        } else {
+            return std::forward<Fn>(fn)(decoded.view());
+        }
+    }
+};
+
 template <std::uint64_t Seed, class Char, std::size_t N>
 [[nodiscard]] consteval auto make_blob(const Char (&literal)[N])
 {
@@ -265,6 +373,28 @@ template <std::uint64_t Seed, class Char, std::size_t N>
         blob.data[i] = static_cast<Char>(literal[i] ^ detail::mask_for<Char>(Seed, i));
         checksum ^= static_cast<std::uint64_t>(static_cast<std::make_unsigned_t<Char>>(literal[i])) + detail::stream_word(Seed, i);
         checksum = detail::rotl64(checksum, 9);
+    }
+
+    blob.checksum = detail::mix64(checksum);
+    return blob;
+}
+
+template <std::uint64_t Seed, class Char, std::size_t N>
+[[nodiscard]] consteval auto make_automaton_blob(const Char (&literal)[N])
+{
+    static_assert(supported_character_v<Char>, "metastr supports char, wchar_t, char8_t, char16_t and char32_t literals");
+
+    automaton_blob<Char, N, Seed> blob{};
+    auto state = blob.initial_state;
+    std::uint64_t checksum = Seed ^ static_cast<std::uint64_t>(N) ^ 0x6a09e667f3bcc909ull;
+
+    for (std::size_t i = 0; i < N; ++i) {
+        blob.data[i] = static_cast<Char>(literal[i] ^ detail::automaton_mask_for<Char>(Seed, state, i));
+        state = detail::automaton_step(Seed, state, i, static_cast<std::uint8_t>(
+            static_cast<std::make_unsigned_t<Char>>(blob.data[i]) & 0xff));
+        checksum ^= static_cast<std::uint64_t>(static_cast<std::make_unsigned_t<Char>>(literal[i])) +
+            detail::stream_word(Seed ^ 0xbb67ae8584caa73bull, i);
+        checksum = detail::rotl64(checksum, 11);
     }
 
     blob.checksum = detail::mix64(checksum);
@@ -309,5 +439,30 @@ template <std::uint64_t Seed, class Char, std::size_t N>
 
 #define METASTR_U32(str) ([] { \
     constexpr auto blob = ::metastr::make_blob<METASTR_SITE_SEED()>(str); \
+    return blob.decode(); \
+}())
+
+#define METASTR_AUTO(str) ([] { \
+    constexpr auto blob = ::metastr::make_automaton_blob<METASTR_SITE_SEED()>(str); \
+    return blob.decode(); \
+}())
+
+#define METASTR_AUTO_W(str) ([] { \
+    constexpr auto blob = ::metastr::make_automaton_blob<METASTR_SITE_SEED()>(str); \
+    return blob.decode(); \
+}())
+
+#define METASTR_AUTO_U8(str) ([] { \
+    constexpr auto blob = ::metastr::make_automaton_blob<METASTR_SITE_SEED()>(str); \
+    return blob.decode(); \
+}())
+
+#define METASTR_AUTO_U16(str) ([] { \
+    constexpr auto blob = ::metastr::make_automaton_blob<METASTR_SITE_SEED()>(str); \
+    return blob.decode(); \
+}())
+
+#define METASTR_AUTO_U32(str) ([] { \
+    constexpr auto blob = ::metastr::make_automaton_blob<METASTR_SITE_SEED()>(str); \
     return blob.decode(); \
 }())
